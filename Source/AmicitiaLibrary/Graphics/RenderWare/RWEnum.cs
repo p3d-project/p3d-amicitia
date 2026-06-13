@@ -26,6 +26,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
         RwMeshListNode       = 0x0000050E,
         RwSkyMipMapValueNode              = 0x00000110,
         RwSkinNode                  = 0x00000116,
+        RwMatFxNode                       = 0x00000120,
         RwHAnimFrameExtensionNode       = 0x0000011E,
         RwUserDataPluginNode              = 0x0000011F,
         RwMaestro2DNode                   = 0x000001B1, // ???

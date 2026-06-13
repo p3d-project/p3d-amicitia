@@ -118,6 +118,9 @@
                 case RwNodeId.RwSkinNode:
                     return new RwSkinNode(header, reader, parent.Parent as RwGeometryNode);
 
+                case RwNodeId.RwMatFxNode:
+                    return new RwMatFxNode(header, reader);
+
                 case RwNodeId.RwHAnimFrameExtensionNode:
                     return new RwHAnimFrameExtensionNode(header, reader);
 

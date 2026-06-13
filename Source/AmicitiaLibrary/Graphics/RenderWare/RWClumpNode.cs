@@ -144,11 +144,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
 
                 var aiNodeName = $"Atomic{atomicIndex}";
                 var aiNode = new Assimp.Node( aiNodeName, aiScene.RootNode );
-                var frameWorldTransform = frame.WorldTransform;
-                aiNode.Transform = new Assimp.Matrix4x4( frameWorldTransform.M11, frameWorldTransform.M21, frameWorldTransform.M31, frameWorldTransform.M41,
-                                                         frameWorldTransform.M12, frameWorldTransform.M22, frameWorldTransform.M32, frameWorldTransform.M42,
-                                                         frameWorldTransform.M13, frameWorldTransform.M23, frameWorldTransform.M33, frameWorldTransform.M43,
-                                                         frameWorldTransform.M14, frameWorldTransform.M24, frameWorldTransform.M34, frameWorldTransform.M44 );
+                aiNode.Transform = Assimp.Matrix4x4.Identity;
                 aiScene.RootNode.Children.Add( aiNode );
 
                 bool hasVertexWeights = geometry.SkinNode != null;
@@ -186,7 +182,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                             int vertexIndex = indices[triIdx + triVertIdx];
 
                             // TextureCoordinateChannels
-                            if ( geometry.HasTextureCoordinates )
+                            if ( geometry.TextureCoordinateChannelCount > 0 )
                             {
                                 for ( int channelIdx = 0; channelIdx < geometry.TextureCoordinateChannelCount; channelIdx++ )
                                 {
@@ -267,29 +263,28 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                     }
                     else
                     {
-                        var aiBone = new Assimp.Bone();
+                        // Non-skinned: no bones at all, just bake world transform into vertices directly
+                        // so Blender doesn't need to interpret node transforms or bone offset matrices.
+                        // RenderWare stores matrices row-major (right/up/at as rows, translation in row 4).
+                        // System.Numerics Vector3.Transform uses v*M convention so we use the matrix as-is
+                        // with the original Transform*Parent multiplication order in WorldTransform.
+                        var worldTransform = frame.WorldTransform;
+                        Matrix4x4.Invert( worldTransform, out Matrix4x4 invTranspose );
+                        invTranspose = Matrix4x4.Transpose( invTranspose );
 
-                        // Name
-                        aiBone.Name = frame.HasHAnimExtension ? "_" + frame.HAnimFrameExtensionNode.NameId : "RootNode";
-
-                        // VertexWeights
                         for ( int i = 0; i < aiMesh.Vertices.Count; i++ )
                         {
-                            var aiVertexWeight = new Assimp.VertexWeight( i, 1f );
-                            aiBone.VertexWeights.Add( aiVertexWeight );
+                            var v = aiMesh.Vertices[i];
+                            var t = Vector3.Transform( new Vector3( v.X, v.Y, v.Z ), worldTransform );
+                            aiMesh.Vertices[i] = new Assimp.Vector3D( t.X, t.Y, t.Z );
                         }
 
-                        // OffsetMatrix
-                        /*
-                        Matrix4x4.Invert( frame.WorldTransform, out Matrix4x4 offsetMatrix );
-                        aiBone.OffsetMatrix = new Assimp.Matrix4x4( offsetMatrix.M11, offsetMatrix.M21, offsetMatrix.M31, offsetMatrix.M41,
-                                                                    offsetMatrix.M12, offsetMatrix.M22, offsetMatrix.M32, offsetMatrix.M42,
-                                                                    offsetMatrix.M13, offsetMatrix.M23, offsetMatrix.M33, offsetMatrix.M43,
-                                                                    offsetMatrix.M14, offsetMatrix.M24, offsetMatrix.M34, offsetMatrix.M44 );
-                        */
-                        aiBone.OffsetMatrix = Assimp.Matrix4x4.Identity;
-
-                        aiMesh.Bones.Add( aiBone );
+                        for ( int i = 0; i < aiMesh.Normals.Count; i++ )
+                        {
+                            var n = aiMesh.Normals[i];
+                            var t = Vector3.TransformNormal( new Vector3( n.X, n.Y, n.Z ), invTranspose );
+                            aiMesh.Normals[i] = new Assimp.Vector3D( t.X, t.Y, t.Z );
+                        }
                     }
 
                     var material = geometry.Materials[mesh.MaterialIndex];
@@ -309,6 +304,26 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                         aiMaterial.Name = material.TextureReferenceNode.Name;
 
                     aiMaterial.ShadingMode = Assimp.ShadingMode.Phong;
+
+                    // MatFX extension (env map / dual texturing)
+                    var matFxNode = material.Extension.OfType<RwMatFxNode>().FirstOrDefault();
+                    if ( matFxNode != null )
+                    {
+                        if ( matFxNode.EffectType == RwMatFxType.EnvMap && matFxNode.EnvMapTexture != null )
+                        {
+                            aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.matfx.type", "envmap" ) );
+                            aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.envmap.texture", matFxNode.EnvMapTexture.Name ) );
+                            aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.envmap.coefficient", matFxNode.ReflectionCoefficient ) );
+                        }
+                        else if ( matFxNode.EffectType == RwMatFxType.Dual )
+                        {
+                            aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.matfx.type", "dual" ) );
+                            aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.dual.srcblend", matFxNode.SrcBlendMode ) );
+                            aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.dual.dstblend", matFxNode.DstBlendMode ) );
+                            if ( matFxNode.DualTexture != null )
+                                aiMaterial.AddProperty( new Assimp.MaterialProperty( "$mat.rw.dual.texture", matFxNode.DualTexture.Name ) );
+                        }
+                    }
 
                     // Add mesh to meshes
                     aiScene.Meshes.Add( aiMesh );
