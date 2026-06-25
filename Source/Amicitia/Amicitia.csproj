@@ -195,7 +195,7 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Dependencies\AtlusFileSystemLibrary\AtlusFileSystemLibrary.csproj">
+    <ProjectReference Include="..\..\Dependencies\AtlusFileSystemLibrary\Source\AtlusFileSystemLibrary\AtlusFileSystemLibrary.csproj">
       <Project>{9960b785-6207-44e8-ba42-ec7f6f785344}</Project>
       <Name>AtlusFileSystemLibrary</Name>
     </ProjectReference>

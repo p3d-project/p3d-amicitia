@@ -200,9 +200,7 @@ namespace Amicitia.ResourceWrappers
                 using ( FolderBrowserDialog dialog = new FolderBrowserDialog() )
                 {
                     dialog.ShowNewFolderButton = true;
-                    dialog.AutoUpgradeEnabled = true;
                     dialog.Description = "Select a folder to export textures into";
-                    dialog.UseDescriptionForTitle = true;
 
                     if ( dialog.ShowDialog() != DialogResult.OK )
                     {
@@ -361,9 +359,7 @@ namespace Amicitia.ResourceWrappers
                 using ( FolderBrowserDialog dialog = new FolderBrowserDialog() )
                 {
                     dialog.ShowNewFolderButton = true;
-                    dialog.AutoUpgradeEnabled = true;
                     dialog.Description = "Select a folder to export clumps into";
-                    dialog.UseDescriptionForTitle = true;
 
                     if ( dialog.ShowDialog() != DialogResult.OK )
                     {
