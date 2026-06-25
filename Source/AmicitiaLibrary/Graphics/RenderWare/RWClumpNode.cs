@@ -299,9 +299,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                     }
 
                     // Name
-                    aiMaterial.Name = material.Name ?? $"Geometry{atomic.GeometryIndex}_Material{mesh.MaterialIndex}";
-                    if ( material.IsTextured && material.Name == null )
-                        aiMaterial.Name = material.TextureReferenceNode.Name;
+                    aiMaterial.Name = $"Atomic{atomicIndex}_Mesh{meshIndex}_" + (material.Name ?? ( material.IsTextured ? material.TextureReferenceNode.Name : $"Material{mesh.MaterialIndex}" ));
 
                     aiMaterial.ShadingMode = Assimp.ShadingMode.Phong;
 
