@@ -137,7 +137,7 @@ namespace Amicitia
                                     {
                                         var parentResWrap = ( IResourceWrapper )node;
                                         var parentScene = parentResWrap.Resource as RmdScene;
-                                        if ( parentScene.HasTextureDictionary )
+                                        if ( parentScene != null && parentScene.HasTextureDictionary )
                                             mViewer.LoadTextures( parentScene.TextureDictionary );
                                     }
                                 }
