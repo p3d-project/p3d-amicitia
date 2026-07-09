@@ -78,7 +78,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                 if (ext.Children == null || ext.Children.Count == 0)
                     continue;
 
-                foreach (RwHAnimFrameExtensionNode plug in ext.Children)
+                foreach (RwHAnimFrameExtensionNode plug in ext.Children.OfType<RwHAnimFrameExtensionNode>())
                 {
                     if (plug.NameId == nameId)
                         return frameIdx;
@@ -118,7 +118,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                 if (ext.Children == null)
                     continue;
 
-                foreach (RwHAnimFrameExtensionNode plug in ext.Children)
+                foreach (RwHAnimFrameExtensionNode plug in ext.Children.OfType<RwHAnimFrameExtensionNode>())
                 {
                     if (plug.NameId == name)
                         return frameIndex;

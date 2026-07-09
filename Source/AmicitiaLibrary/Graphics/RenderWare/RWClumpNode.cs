@@ -144,7 +144,12 @@ namespace AmicitiaLibrary.Graphics.RenderWare
 
                 var aiNodeName = $"Atomic{atomicIndex}";
                 var aiNode = new Assimp.Node( aiNodeName, aiScene.RootNode );
-                aiNode.Transform = Assimp.Matrix4x4.Identity;
+                var worldTransform = frame.WorldTransform;
+                aiNode.Transform = new Assimp.Matrix4x4(worldTransform.M11, worldTransform.M21, worldTransform.M31, worldTransform.M41,
+                                                        worldTransform.M12, worldTransform.M22, worldTransform.M32, worldTransform.M42,
+                                                        worldTransform.M13, worldTransform.M23, worldTransform.M33, worldTransform.M43,
+                                                        worldTransform.M14, worldTransform.M24, worldTransform.M34, worldTransform.M44);
+
                 aiScene.RootNode.Children.Add( aiNode );
 
                 bool hasVertexWeights = geometry.SkinNode != null;
@@ -264,14 +269,14 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                     else
                     {
 
-                        var worldTransform = frame.WorldTransform;
-                        Matrix4x4.Invert( worldTransform, out Matrix4x4 invTranspose );
+                        var meshWorldTransform = frame.WorldTransform;
+                        Matrix4x4.Invert( meshWorldTransform, out Matrix4x4 invTranspose );
                         invTranspose = Matrix4x4.Transpose( invTranspose );
 
                         for ( int i = 0; i < aiMesh.Vertices.Count; i++ )
                         {
                             var v = aiMesh.Vertices[i];
-                            var t = Vector3.Transform( new Vector3( v.X, v.Y, v.Z ), worldTransform );
+                            var t = Vector3.Transform( new Vector3( v.X, v.Y, v.Z ), meshWorldTransform );
                             aiMesh.Vertices[i] = new Assimp.Vector3D( t.X, t.Y, t.Z );
                         }
 
@@ -418,15 +423,12 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                 GeometryList.Add( geometryNode );
 
                 var atomicNode = new RwAtomicNode(this, 0, i, 5);
-                if (singleWeight)
+                if (singleWeight && assimpMesh.Bones.Count != 0)
                 {
-                    if ( assimpMesh.Bones.Count != 0 )
+                    int frameIndex = FrameList.GetFrameIndexByName(assimpMesh.Bones[0].Name);
+                    if (frameIndex != -1)
                     {
-                        atomicNode.FrameIndex = FrameList.GetFrameIndexByName( assimpMesh.Bones[0].Name );
-                    }
-                    else if ( rootNode != null )
-                    {
-                        atomicNode.FrameIndex = FrameList.GetFrameIndexByName( rootNode.Name );
+                        atomicNode.FrameIndex = frameIndex;
                     }
                 }
 
