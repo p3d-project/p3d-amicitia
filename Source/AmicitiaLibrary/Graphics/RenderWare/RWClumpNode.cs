@@ -294,7 +294,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
                             texture.Name + ".png", Assimp.TextureType.Diffuse, 0, Assimp.TextureMapping.FromUV, 0, 0, Assimp.TextureOperation.Add, Assimp.TextureWrapMode.Wrap, Assimp.TextureWrapMode.Wrap, 0 );
                     }
 
-                    // Name
+     
                     aiMaterial.Name = $"Atomic{atomicIndex}_Mesh{meshIndex}_" + (material.Name ?? ( material.IsTextured ? material.TextureReferenceNode.Name : $"Material{mesh.MaterialIndex}" ));
 
                     aiMaterial.ShadingMode = Assimp.ShadingMode.Phong;
