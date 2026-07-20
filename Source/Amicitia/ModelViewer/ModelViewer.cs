@@ -289,6 +289,10 @@ namespace Amicitia.ModelViewer
             mViewerCtrl.Enter += (s, e) => { mIsViewFocused = true; };
             mViewerCtrl.Leave += (s, e) => { mIsViewFocused = false; };
             mViewerCtrl.KeyDown  += OnKeyDown;
+
+            var parentForm = controller.FindForm();
+            if (parentForm != null)
+                parentForm.Deactivate += (s, e) => { mIsViewFocused = false; };
             mViewerCtrl.MouseDown += OnMouseDown;
             mViewerCtrl.MouseUp   += OnMouseUp;
             mViewerCtrl.MouseMove += OnMouseMove;
