@@ -1,3 +1,7 @@
+> [!CAUTION]
+> Amicitia is a *very* old repo, going back to 10 years ago. Many of the features are broken or lacking. 
+> We're trying our best to add back and fix these issues with the old repo.
+
 # P3D Amicitia
 Editor for file formats used in Atlus' Persona games. 
 Modified by member(s) of the P3D team in hopes of an easier workflow.
