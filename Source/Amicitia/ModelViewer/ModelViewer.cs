@@ -21,7 +21,9 @@ namespace Amicitia.ModelViewer
         public string[] Tid;
         public Color[] Color;
         public bool Strip;
-        public GpuModel(int vbo, int[] ibo, int vc, int[] ic, string[] tid, Color[] color, bool strip)
+        public bool[] Transparent;
+        public Vector3[] Center;
+        public GpuModel(int vbo, int[] ibo, int vc, int[] ic, string[] tid, Color[] color, bool strip, bool[] transparent, Vector3[] center)
         {
             this.Vbo = vbo;
             this.Ibo = ibo;
@@ -30,6 +32,8 @@ namespace Amicitia.ModelViewer
             this.Tid = tid;
             this.Color = color;
             this.Strip = strip;
+            this.Transparent = transparent;
+            this.Center = center;
         }
     }
 
@@ -246,6 +250,14 @@ namespace Amicitia.ModelViewer
 
         // positions of the loaded geometry, used for framing
         private List<Vector3> mVertexPositions = new List<Vector3>();
+
+        // transparent meshes sorted back to front each frame
+        private struct TransparentDraw
+        {
+            public int Model, Mesh;
+            public float DistSq;
+        }
+        private List<TransparentDraw> mTransparentDraws = new List<TransparentDraw>();
 
         private System.Diagnostics.Stopwatch mFrameTimer = System.Diagnostics.Stopwatch.StartNew();
 
@@ -514,19 +526,6 @@ namespace Amicitia.ModelViewer
 
         private static byte ScalePS2Alpha(byte a) => (byte)Math.Min((a / 128.0f) * 255, 255);
 
-        private bool ModelHasTransparency(GpuModel model)
-        {
-            for (int i = 0; i < model.Color.Length; i++)
-            {
-                if (ScalePS2Alpha(model.Color[i].A) < 255)
-                    return true;
-
-                if (model.Tid[i] != string.Empty && mTransparentTextures.Contains(model.Tid[i]))
-                    return true;
-            }
-            return false;
-        }
-
         private HashSet<string> mTransparentTextures = new HashSet<string>();
 
         public void LoadTextures(RwTextureDictionaryNode textures)
@@ -707,9 +706,41 @@ namespace Amicitia.ModelViewer
                     : Color.White;
             }
 
+            // flag transparent meshes
+            bool[] transparent = new bool[texname.Length];
+            for ( int i = 0; i < transparent.Length; i++ )
+            {
+                transparent[i] = ScalePS2Alpha( colors[i].A ) < 255
+                    || ( texname[i] != string.Empty && mTransparentTextures.Contains( texname[i] ) );
+            }
+
+            // mesh centers, used to sort transparent meshes
+            Vector3[] centers = new Vector3[allIndices.Length];
+            for ( int i = 0; i < centers.Length; i++ )
+            {
+                Vector3 min = new Vector3( float.MaxValue );
+                Vector3 max = new Vector3( float.MinValue );
+                int count = Math.Min( allIndicesCount[i], allIndices[i].Length );
+                bool any = false;
+
+                for ( int k = 0; k < count; k++ )
+                {
+                    int idx = allIndices[i][k];
+                    if ( idx < 0 || idx >= vertices.Length )
+                        continue;
+
+                    Vector3 p = new Vector3( vertices[idx].Pos.X, vertices[idx].Pos.Y, vertices[idx].Pos.Z );
+                    min = Vector3.ComponentMin( min, p );
+                    max = Vector3.ComponentMax( max, p );
+                    any = true;
+                }
+
+                centers[i] = any ? ( min + max ) * 0.5f : Vector3.Zero;
+            }
+
             // add the render model to the list
             mModels.Add( new GpuModel( vbo, ibo, geom.VertexCount, allIndicesCount, texname, colors,
-                geom.MeshListNode.PrimitiveType == RwPrimitiveType.TriangleStrip ) );
+                geom.MeshListNode.PrimitiveType == RwPrimitiveType.TriangleStrip, transparent, centers ) );
         }
 
         public void LoadScene(RmdScene rmdScene)
@@ -789,10 +820,13 @@ namespace Amicitia.ModelViewer
             GL.VertexAttribPointer(3, 4, VertexAttribPointerType.Float, false, sizeof(float) * 12, sizeof(float) * 8);
         }
 
-        private void SubBind(GpuModel data)
+        private void SubBind(GpuModel data, int first, int last, bool transparent)
         {
-            for (int i = 0; i < data.Ibo.Length; i++)
+            for (int i = first; i < last; i++)
             {
+                if (data.Transparent[i] != transparent)
+                    continue;
+
                 int isTextured = 0;
 
                 if (data.Tid[i] != string.Empty)
@@ -827,7 +861,7 @@ namespace Amicitia.ModelViewer
             GL.BindBuffer(BufferTarget.ElementArrayBuffer, 0);
         }
 
-        private void FullBind(GpuModel data) // for optimization
+        private void FullBind(GpuModel data, int first, int last, bool transparent) // for optimization
         {
             if (data.Vbo == 0)
                 return;
@@ -836,13 +870,10 @@ namespace Amicitia.ModelViewer
             {
                 EndBind();  // incase the previous was a SubBind
                 BeginBind(data);
-                SubBind(data);
                 mCurrentGpuModelId = data.Vbo;
             }
-            else
-            {
-                SubBind(data);
-            }
+
+            SubBind(data, first, last, transparent);
         }
 
         private void FullTexBind(int texture)
@@ -876,21 +907,33 @@ namespace Amicitia.ModelViewer
 
             if (mModels.Count > 0)
             {
+                // opaque meshes first, with depth writes
                 GL.DepthMask(true);
                 for (int i = 0; i < mModels.Count; i++)
-                {
-                    if (!ModelHasTransparency(mModels[i]))
-                        FullBind(mModels[i]);
-                }
+                    FullBind(mModels[i], 0, mModels[i].Ibo.Length, false);
 
-                GL.DepthMask(false);
+                // transparent meshes back to front, still writing depth so near-opaque meshes occlude
+                mTransparentDraws.Clear();
                 for (int i = 0; i < mModels.Count; i++)
                 {
-                    if (ModelHasTransparency(mModels[i]))
-                        FullBind(mModels[i]);
+                    GpuModel model = mModels[i];
+                    for (int j = 0; j < model.Transparent.Length; j++)
+                    {
+                        if (model.Transparent[j])
+                            mTransparentDraws.Add(new TransparentDraw { Model = i, Mesh = j, DistSq = (model.Center[j] - mCamera.Position).LengthSquared });
+                    }
                 }
 
-                GL.DepthMask(true);
+                mTransparentDraws.Sort((a, b) =>
+                {
+                    int c = b.DistSq.CompareTo(a.DistSq);
+                    if (c != 0) return c;
+                    c = a.Model.CompareTo(b.Model);
+                    return c != 0 ? c : a.Mesh.CompareTo(b.Mesh);
+                });
+
+                foreach (var draw in mTransparentDraws)
+                    FullBind(mModels[draw.Model], draw.Mesh, draw.Mesh + 1, true);
             }
 
             mViewerCtrl.SwapBuffers();
