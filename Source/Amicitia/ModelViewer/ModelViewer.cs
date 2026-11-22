@@ -154,12 +154,22 @@ namespace Amicitia.ModelViewer
         public Vector3 Forward  { get; private set; }
         public Vector3 Up       { get; private set; }
         public Vector3 Right    => Vector3.Normalize(Vector3.Cross(Forward, Up));
+        public float   Far      { get; set; } = 100000f;
 
         public void Rotate(float dx, float dy, float sensitivity = 0.2f)
         {
             mYaw   += dx * sensitivity;
             mPitch -= dy * sensitivity;          // subtract: dragging down looks up
             mPitch  = MathHelper.Clamp(mPitch, -89f, 89f);
+            UpdateForward();
+        }
+
+        public void LookAt(Vector3 position, Vector3 target)
+        {
+            Vector3 dir = Vector3.Normalize(target - position);
+            Position = position;
+            mYaw   = MathHelper.RadiansToDegrees((float)Math.Atan2(dir.Z, dir.X));
+            mPitch = MathHelper.RadiansToDegrees((float)Math.Asin(dir.Y));
             UpdateForward();
         }
 
@@ -176,7 +186,7 @@ namespace Amicitia.ModelViewer
 
         public void Bind(ShaderProgram shader, GLControl control)
         {
-            Matrix4 proj = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(60.0f), (float)control.Width / control.Height, 0.1f, 100000.0f);
+            Matrix4 proj = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(60.0f), (float)control.Width / control.Height, 0.1f, Far);
             Matrix4 view = Matrix4.LookAt(Position, Position + Forward, Up);
             shader.SetUniform("proj", proj);
             shader.SetUniform("view", view);
@@ -233,6 +243,9 @@ namespace Amicitia.ModelViewer
         private bool  mRightMouseDown = false;
         private Point mLastMousePos;
         private float mMoveSpeed = 200f;
+
+        // positions of the loaded geometry, used for framing
+        private List<Vector3> mVertexPositions = new List<Vector3>();
 
         private System.Diagnostics.Stopwatch mFrameTimer = System.Diagnostics.Stopwatch.StartNew();
 
@@ -382,7 +395,60 @@ namespace Amicitia.ModelViewer
                 mCamera.Position = IsNaN(oldPos) ? Vector3.Zero : oldPos;
         }
 
-        private void OnKeyDown(object sender, KeyEventArgs args) { /* movement polled in idle loop */ }
+        private void OnKeyDown(object sender, KeyEventArgs args)
+        {
+            // movement polled in idle loop
+            if (args.KeyCode == Keys.F) FrameModel();
+        }
+
+        private void TrackVertex(BasicVec3 p)
+        {
+            var v = new Vector3(p.X, p.Y, p.Z);
+            if (!IsNaN(v))
+                mVertexPositions.Add(v);
+        }
+
+        private static float Percentile(float[] sorted, float p) => sorted[(int)((sorted.Length - 1) * p)];
+
+        // put the camera in front of the loaded model
+        public void FrameModel()
+        {
+            if (!mCanRender || mVertexPositions.Count == 0)
+                return;
+
+            // trim outliers so stray geometry doesn't push the camera away
+            int n = mVertexPositions.Count;
+            float[] xs = new float[n], ys = new float[n], zs = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                xs[i] = mVertexPositions[i].X;
+                ys[i] = mVertexPositions[i].Y;
+                zs[i] = mVertexPositions[i].Z;
+            }
+            Array.Sort(xs); Array.Sort(ys); Array.Sort(zs);
+
+            Vector3 min = new Vector3(Percentile(xs, 0.02f), Percentile(ys, 0.02f), Percentile(zs, 0.02f));
+            Vector3 max = new Vector3(Percentile(xs, 0.98f), Percentile(ys, 0.98f), Percentile(zs, 0.98f));
+
+            Vector3 center = (min + max) * 0.5f;
+            float radius = Math.Max((max - min).Length * 0.5f, 1f);
+
+            // back off until the bounding sphere fits the narrowest fov
+            float aspect = (float)mViewerCtrl.Width / Math.Max(mViewerCtrl.Height, 1);
+            float vHalf = MathHelper.DegreesToRadians(30f);
+            float hHalf = (float)Math.Atan(Math.Tan(vHalf) * aspect);
+            float dist = radius / (float)Math.Sin(Math.Min(vHalf, hHalf)) * 1.1f;
+
+            // 3/4 view, raised and turned off the front
+            float az = MathHelper.DegreesToRadians(35f);
+            float el = MathHelper.DegreesToRadians(25f);
+            Vector3 offset = new Vector3((float)(Math.Sin(az) * Math.Cos(el)), (float)Math.Sin(el), (float)(Math.Cos(az) * Math.Cos(el)));
+
+            // keep the model inside the far plane
+            mCamera.Far = Math.Max(100000f, (dist + radius) * 4f);
+            mCamera.LookAt(center + offset * dist, center);
+            mViewerCtrl.Invalidate();
+        }
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
@@ -591,6 +657,7 @@ namespace Amicitia.ModelViewer
                     vtx.Col = new BasicVec4( 1, 1, 1, 1 );
 
                 vertices[i] = vtx;
+                TrackVertex( vtx.Pos );
             }
 
             for ( int i = 0; i < geom.MeshListNode.MeshCount; i++ )
@@ -697,6 +764,7 @@ namespace Amicitia.ModelViewer
             mModels.Clear();
             mTexLookup.Clear();
             mTransparentTextures.Clear();
+            mVertexPositions.Clear();
         }
 
         public void DisposeViewer()

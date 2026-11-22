@@ -22,6 +22,7 @@ namespace Amicitia
         //private static Rectangle _lastMainTreeViewSize;
         private static MainForm mInstance;
         private ModelViewer.ModelViewer mViewer;
+        private TreeNode mLastFramedNode;
 
         public static MainForm Instance
         {
@@ -183,6 +184,13 @@ namespace Amicitia
                         //throw;
                     }
 
+                    // face the model when a new one is selected
+                    if (mLastFramedNode != resNode)
+                    {
+                        mViewer.FrameModel();
+                        mLastFramedNode = resNode;
+                    }
+
                     glControl1.Focus();
                     glControl1.Invalidate();
                     glControl1.Update();
@@ -190,6 +198,7 @@ namespace Amicitia
                 else
                 {
                     mViewer.DeleteScene();
+                    mLastFramedNode = null;
                 }
             }
 
