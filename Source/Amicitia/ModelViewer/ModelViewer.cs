@@ -288,11 +288,13 @@ namespace Amicitia.ModelViewer
             mViewerCtrl.Resize += ModelViewerResize;
             mViewerCtrl.Enter += (s, e) => { mIsViewFocused = true; };
             mViewerCtrl.Leave += (s, e) => { mIsViewFocused = false; };
+            mViewerCtrl.GotFocus += (s, e) => { mIsViewFocused = true; };
+            mViewerCtrl.LostFocus += (s, e) => ReleaseInputState();
             mViewerCtrl.KeyDown  += OnKeyDown;
 
             var parentForm = controller.FindForm();
             if (parentForm != null)
-                parentForm.Deactivate += (s, e) => { mIsViewFocused = false; };
+                parentForm.Deactivate += (s, e) => ReleaseInputState();
             mViewerCtrl.MouseDown += OnMouseDown;
             mViewerCtrl.MouseUp   += OnMouseUp;
             mViewerCtrl.MouseMove += OnMouseMove;
@@ -360,26 +362,42 @@ namespace Amicitia.ModelViewer
 
         private void UpdateCamera(float dt)
         {
+            // poll real focus, Enter isn't raised on window reactivation
+            mIsViewFocused = mViewerCtrl.Focused;
             if (!mIsViewFocused) return;
 
-            var kb = OpenTK.Input.Keyboard.GetState();
             Vector3 oldPos = mCamera.Position;
 
             float speed = mMoveSpeed * dt;
-            if (kb[Key.ShiftLeft] || kb[Key.ShiftRight]) speed *= 3f;
+            if (IsKeyDown(Keys.ShiftKey)) speed *= 3f;
 
-            if (kb[Key.W]) mCamera.Position += mCamera.Forward * speed;
-            if (kb[Key.S]) mCamera.Position -= mCamera.Forward * speed;
-            if (kb[Key.D]) mCamera.Position += mCamera.Right   * speed;
-            if (kb[Key.A]) mCamera.Position -= mCamera.Right   * speed;
-            if (kb[Key.E]) mCamera.Position += mCamera.Up      * speed;
-            if (kb[Key.Q]) mCamera.Position -= mCamera.Up      * speed;
+            if (IsKeyDown(Keys.W)) mCamera.Position += mCamera.Forward * speed;
+            if (IsKeyDown(Keys.S)) mCamera.Position -= mCamera.Forward * speed;
+            if (IsKeyDown(Keys.D)) mCamera.Position += mCamera.Right   * speed;
+            if (IsKeyDown(Keys.A)) mCamera.Position -= mCamera.Right   * speed;
+            if (IsKeyDown(Keys.E)) mCamera.Position += mCamera.Up      * speed;
+            if (IsKeyDown(Keys.Q)) mCamera.Position -= mCamera.Up      * speed;
 
             if (IsNaN(mCamera.Position))
                 mCamera.Position = IsNaN(oldPos) ? Vector3.Zero : oldPos;
         }
 
         private void OnKeyDown(object sender, KeyEventArgs args) { /* movement polled in idle loop */ }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        // OpenTK's keyboard state goes stale after long unfocus
+        private static bool IsKeyDown(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
+
+        // clear held input on focus loss
+        private void ReleaseInputState()
+        {
+            mIsViewFocused = false;
+            mRightMouseDown = false;
+            if (mViewerCtrl != null && mViewerCtrl.IsHandleCreated)
+                mViewerCtrl.Capture = false;
+        }
 
         private void OnMouseDown(object sender, System.Windows.Forms.MouseEventArgs e)
         {
