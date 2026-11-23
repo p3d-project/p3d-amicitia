@@ -95,10 +95,15 @@ namespace Amicitia
         {
             // hide the picture box
             mainPictureBox.Visible = false;
-            glControl1.Visible = false;
 
             var resNode = mainTreeView.SelectedNode;
             var resWrap = resNode as IResourceWrapper;
+
+            bool isModel = resWrap != null && (resWrap.FileType == SupportedFileType.RmdScene || resWrap.FileType == SupportedFileType.RwClumpNode || resWrap.FileType == SupportedFileType.RwGeometryNode || resWrap.FileType == SupportedFileType.RwAtomicNode);
+
+            // keep the viewer visible between models so the last frame is held
+            if (!isModel || mViewer == null)
+                glControl1.Visible = false;
 
             if ( resWrap == null )
             {
@@ -117,7 +122,7 @@ namespace Amicitia
 
             if (mViewer != null)
             {
-                if (resWrap.FileType == SupportedFileType.RmdScene || resWrap.FileType == SupportedFileType.RwClumpNode || resWrap.FileType == SupportedFileType.RwGeometryNode || resWrap.FileType == SupportedFileType.RwAtomicNode)
+                if (isModel)
                 {
                     glControl1.Visible = true;
 
@@ -191,7 +196,9 @@ namespace Amicitia
                         mLastFramedNode = resNode;
                     }
 
-                    glControl1.Focus();
+                    // don't steal focus while scrolling the tree with the keyboard
+                    if (!mainTreeView.Focused)
+                        glControl1.Focus();
                     glControl1.Invalidate();
                     glControl1.Update();
                 }
