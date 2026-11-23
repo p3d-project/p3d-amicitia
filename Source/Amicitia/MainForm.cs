@@ -209,13 +209,63 @@ namespace Amicitia
                 }
             }
 
-            // Check if the resource is a texture
-            if (resWrap.Resource is ITextureFile)
+            // Check if the resource is a texture, or a material/texture reference pointing to one
+            var texture = resWrap.Resource as ITextureFile ?? FindReferencedTexture(resWrap);
+            if (texture != null)
             {
                 // Unhide the picture box if we have a picture selected
                 mainPictureBox.Visible = true;
-                mainPictureBox.Image = ((ITextureFile)resWrap.Resource).GetBitmap();
+                mainPictureBox.Image = texture.GetBitmap();
             }
+        }
+
+        // find the texture a material or texture reference points to
+        private ITextureFile FindReferencedTexture(IResourceWrapper resWrap)
+        {
+            string name = null;
+            RwNode node = null;
+
+            if (resWrap.Resource is RwMaterial material && material.IsTextured && material.TextureReferenceNode != null)
+            {
+                name = material.TextureReferenceNode.Name;
+                node = material;
+            }
+            else if (resWrap.Resource is RwTextureReferenceNode reference)
+            {
+                name = reference.Name;
+                node = reference;
+            }
+
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            // prefer the scene the node belongs to
+            if (node.FindParent(RwNodeId.RmdSceneNode) is RmdScene scene && scene.TextureDictionary != null)
+            {
+                foreach (var tex in scene.TextureDictionary.Textures)
+                {
+                    if (tex.Name == name)
+                        return tex;
+                }
+            }
+
+            // textures can live in a sibling file (field models)
+            return FindTextureInTree(mainTreeView.Nodes, name);
+        }
+
+        private static ITextureFile FindTextureInTree(TreeNodeCollection nodes, string name)
+        {
+            foreach (TreeNode node in nodes)
+            {
+                if (node is RwTextureNativeNodeWrapper wrapper && wrapper.Resource.Name == name)
+                    return wrapper.Resource;
+
+                var found = FindTextureInTree(node.Nodes, name);
+                if (found != null)
+                    return found;
+            }
+
+            return null;
         }
 
         private void MainTreeViewNodeMouseClickEventHandler(object sender, TreeNodeMouseClickEventArgs e)
