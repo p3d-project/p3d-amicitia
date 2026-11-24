@@ -12,6 +12,13 @@ using SN = System.Numerics;
 
 namespace Amicitia.ModelViewer
 {
+    public enum MeshBlendMode
+    {
+        Opaque,
+        Alpha,
+        Additive
+    }
+
     public struct GpuModel
     {
         public int Vbo;
@@ -21,9 +28,10 @@ namespace Amicitia.ModelViewer
         public string[] Tid;
         public Color[] Color;
         public bool Strip;
-        public bool[] Transparent;
+        public MeshBlendMode[] Blend;
         public Vector3[] Center;
-        public GpuModel(int vbo, int[] ibo, int vc, int[] ic, string[] tid, Color[] color, bool strip, bool[] transparent, Vector3[] center)
+        public bool[] Flat;
+        public GpuModel(int vbo, int[] ibo, int vc, int[] ic, string[] tid, Color[] color, bool strip, MeshBlendMode[] blend, Vector3[] center, bool[] flat)
         {
             this.Vbo = vbo;
             this.Ibo = ibo;
@@ -32,8 +40,9 @@ namespace Amicitia.ModelViewer
             this.Tid = tid;
             this.Color = color;
             this.Strip = strip;
-            this.Transparent = transparent;
+            this.Blend = blend;
             this.Center = center;
+            this.Flat = flat;
         }
     }
 
@@ -158,6 +167,7 @@ namespace Amicitia.ModelViewer
         public Vector3 Forward  { get; private set; }
         public Vector3 Up       { get; private set; }
         public Vector3 Right    => Vector3.Normalize(Vector3.Cross(Forward, Up));
+        public float   Near     { get; set; } = 0.1f;
         public float   Far      { get; set; } = 100000f;
 
         public void Rotate(float dx, float dy, float sensitivity = 0.2f)
@@ -190,7 +200,7 @@ namespace Amicitia.ModelViewer
 
         public void Bind(ShaderProgram shader, GLControl control)
         {
-            Matrix4 proj = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(60.0f), (float)control.Width / control.Height, 0.1f, Far);
+            Matrix4 proj = Matrix4.CreatePerspectiveFieldOfView(MathHelper.DegreesToRadians(60.0f), (float)control.Width / control.Height, Near, Far);
             Matrix4 view = Matrix4.LookAt(Position, Position + Forward, Up);
             shader.SetUniform("proj", proj);
             shader.SetUniform("view", view);
@@ -250,16 +260,48 @@ namespace Amicitia.ModelViewer
 
         // positions of the loaded geometry, used for framing
         private List<Vector3> mVertexPositions = new List<Vector3>();
+        private Vector3 mSceneMin, mSceneMax;
 
         // transparent meshes sorted back to front each frame
         private struct TransparentDraw
         {
             public int Model, Mesh;
             public float DistSq;
+            public bool NoWrite;
         }
         private List<TransparentDraw> mTransparentDraws = new List<TransparentDraw>();
 
         private System.Diagnostics.Stopwatch mFrameTimer = System.Diagnostics.Stopwatch.StartNew();
+
+        // debug toggles for tracking down the white rings: B cycles blended meshes, O polygon offset, M mipmaps
+        private int mDebugView = 0; // 0 all, 1 opaque only, 2 blended only
+        private bool mUsePolyOffset = true;
+        private bool mUseMips = false;
+
+        private void ShowDebugState()
+        {
+            string[] views = { "all", "opaque only", "blended only" };
+            string text = string.Format("[view: {0} | poly offset: {1} | mipmaps: {2}]", views[mDebugView], mUsePolyOffset ? "on" : "off", mUseMips ? "on" : "off");
+            Console.WriteLine(text);
+            var form = mViewerCtrl.FindForm();
+            if (form != null)
+            {
+                int i = form.Text.IndexOf(" [view:");
+                if (i >= 0) form.Text = form.Text.Substring(0, i);
+                form.Text += " " + text;
+            }
+        }
+
+        private void ApplyMipSetting()
+        {
+            foreach (int tex in mTexLookup.Values)
+            {
+                GL.BindTexture(TextureTarget.Texture2D, tex);
+                GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter,
+                    mUseMips ? (int)TextureMinFilter.LinearMipmapLinear : (int)TextureMinFilter.Linear);
+            }
+            mCurrentTextureId = 0;
+        }
 
         // clear color
         private Color mBgColor;
@@ -411,13 +453,46 @@ namespace Amicitia.ModelViewer
         {
             // movement polled in idle loop
             if (args.KeyCode == Keys.F) FrameModel();
+            if (args.KeyCode == Keys.B) { mDebugView = (mDebugView + 1) % 3; ShowDebugState(); }
+            if (args.KeyCode == Keys.O && !args.Control) { mUsePolyOffset = !mUsePolyOffset; ShowDebugState(); }
+            if (args.KeyCode == Keys.M) { mUseMips = !mUseMips; ApplyMipSetting(); ShowDebugState(); }
         }
 
         private void TrackVertex(BasicVec3 p)
         {
             var v = new Vector3(p.X, p.Y, p.Z);
-            if (!IsNaN(v))
-                mVertexPositions.Add(v);
+            if (IsNaN(v))
+                return;
+
+            if (mVertexPositions.Count == 0)
+            {
+                mSceneMin = mSceneMax = v;
+            }
+            else
+            {
+                mSceneMin = Vector3.ComponentMin(mSceneMin, v);
+                mSceneMax = Vector3.ComponentMax(mSceneMax, v);
+            }
+
+            mVertexPositions.Add(v);
+        }
+
+        // keep the depth range tight around the scene to limit z fighting
+        private void UpdateClipPlanes()
+        {
+            if (mVertexPositions.Count == 0)
+            {
+                mCamera.Near = 0.1f;
+                mCamera.Far = 100000f;
+                return;
+            }
+
+            Vector3 center = (mSceneMin + mSceneMax) * 0.5f;
+            float radius = (mSceneMax - mSceneMin).Length * 0.5f;
+            float far = (mCamera.Position - center).Length + radius;
+
+            mCamera.Far = Math.Max(far * 1.05f, 10f);
+            mCamera.Near = Math.Max(mCamera.Far / 1000f, 0.1f);
         }
 
         private static float Percentile(float[] sorted, float p) => sorted[(int)((sorted.Length - 1) * p)];
@@ -456,8 +531,6 @@ namespace Amicitia.ModelViewer
             float el = MathHelper.DegreesToRadians(25f);
             Vector3 offset = new Vector3((float)(Math.Sin(az) * Math.Cos(el)), (float)Math.Sin(el), (float)(Math.Cos(az) * Math.Cos(el)));
 
-            // keep the model inside the far plane
-            mCamera.Far = Math.Max(100000f, (dist + radius) * 4f);
             mCamera.LookAt(center + offset * dist, center);
             mViewerCtrl.Invalidate();
         }
@@ -519,6 +592,36 @@ namespace Amicitia.ModelViewer
             mMoveSpeed = Math.Max(1f, mMoveSpeed * factor);
         }
 
+        // persona 3 stores the blend mode in the material user data
+        private static int GetMaterialBlendId(RwMaterial material)
+        {
+            if (material.Extension == null)
+                return -1;
+
+            foreach (var ext in material.Extension)
+            {
+                if (ext is RwUserDataList list)
+                {
+                    var data = list["per3MatAlpha"];
+                    if (data != null)
+                        return data.IntValue;
+                }
+            }
+
+            return -1;
+        }
+
+        // 1, 2 and 5 are alpha blended, 3 is used by glows and light rays so treat it as additive
+        private static MeshBlendMode BlendModeFromId(int id)
+        {
+            switch (id)
+            {
+                case 0: return MeshBlendMode.Opaque;
+                case 3: return MeshBlendMode.Additive;
+                default: return MeshBlendMode.Alpha;
+            }
+        }
+
         public static bool IsNaN(Vector3 value)
         {
             return float.IsNaN(value.X) || float.IsNaN(value.Y) || float.IsNaN(value.Z);
@@ -546,7 +649,7 @@ namespace Amicitia.ModelViewer
                 {
                     var c = colorpixels[i];
                     pixels[i] = new BasicCol4( Color.FromArgb(
-                        ScalePS2Alpha( c.A ),
+                        texture.IsIndexed ? c.A : ScalePS2Alpha( c.A ),
                         c.R, c.G, c.B ) );
                 }
 
@@ -580,6 +683,7 @@ namespace Amicitia.ModelViewer
 
                 // set up the bitmap data
                 GL.TexImage2D( TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba8, texture.Width, texture.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, pixels );
+                GL.GenerateMipmap( GenerateMipmapTarget.Texture2D );
 
                 // GL 4.5
                 //GL.TextureStorage2D( tex, 1, SizedInternalFormat.Rgba8, texture.Width, texture.Height );
@@ -706,16 +810,23 @@ namespace Amicitia.ModelViewer
                     : Color.White;
             }
 
-            // flag transparent meshes
-            bool[] transparent = new bool[texname.Length];
-            for ( int i = 0; i < transparent.Length; i++ )
+            // pick a blend mode per mesh
+            MeshBlendMode[] blend = new MeshBlendMode[texname.Length];
+            for ( int i = 0; i < blend.Length; i++ )
             {
-                transparent[i] = ScalePS2Alpha( colors[i].A ) < 255
-                    || ( texname[i] != string.Empty && mTransparentTextures.Contains( texname[i] ) );
+                int blendId = geom.MaterialCount > 0
+                    ? GetMaterialBlendId( geom.Materials[geom.MeshListNode.MaterialMeshes[i].MaterialIndex] )
+                    : -1;
+
+                if ( blendId >= 0 )
+                    blend[i] = BlendModeFromId( blendId );
+                else if ( ScalePS2Alpha( colors[i].A ) < 255 || ( texname[i] != string.Empty && mTransparentTextures.Contains( texname[i] ) ) )
+                    blend[i] = MeshBlendMode.Alpha;
             }
 
             // mesh centers, used to sort transparent meshes
             Vector3[] centers = new Vector3[allIndices.Length];
+            bool[] flat = new bool[allIndices.Length];
             for ( int i = 0; i < centers.Length; i++ )
             {
                 Vector3 min = new Vector3( float.MaxValue );
@@ -736,11 +847,15 @@ namespace Amicitia.ModelViewer
                 }
 
                 centers[i] = any ? ( min + max ) * 0.5f : Vector3.Zero;
+
+                // a mesh that is flat along any axis is a decal (shadow quads, floor patches), see the blended pass
+                Vector3 size = max - min;
+                flat[i] = any && ( size.X < 1f || size.Y < 1f || size.Z < 1f );
             }
 
             // add the render model to the list
             mModels.Add( new GpuModel( vbo, ibo, geom.VertexCount, allIndicesCount, texname, colors,
-                geom.MeshListNode.PrimitiveType == RwPrimitiveType.TriangleStrip, transparent, centers ) );
+                geom.MeshListNode.PrimitiveType == RwPrimitiveType.TriangleStrip, blend, centers, flat ) );
         }
 
         public void LoadScene(RmdScene rmdScene)
@@ -824,7 +939,7 @@ namespace Amicitia.ModelViewer
         {
             for (int i = first; i < last; i++)
             {
-                if (data.Transparent[i] != transparent)
+                if ((data.Blend[i] != MeshBlendMode.Opaque) != transparent)
                     continue;
 
                 int isTextured = 0;
@@ -901,6 +1016,7 @@ namespace Amicitia.ModelViewer
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
             mShaderProg.Bind();
+            UpdateClipPlanes();
             mCamera.Bind( mShaderProg, mViewerCtrl );
             mTransform = Matrix4.CreateTranslation( mTp ) * Matrix4.CreateFromQuaternion( Quaternion.FromEulerAngles( 0, 0, 0 ) ) * Matrix4.CreateScale( new Vector3( 1.0f, 1.0f, 1.0f ) );
             mShaderProg.SetUniform( "tran", mTransform );
@@ -908,32 +1024,59 @@ namespace Amicitia.ModelViewer
             if (mModels.Count > 0)
             {
                 // opaque meshes first, with depth writes
+                GL.Disable(EnableCap.Blend);
                 GL.DepthMask(true);
                 for (int i = 0; i < mModels.Count; i++)
-                    FullBind(mModels[i], 0, mModels[i].Ibo.Length, false);
+                    if (mDebugView != 2) FullBind(mModels[i], 0, mModels[i].Ibo.Length, false);
 
-                // transparent meshes back to front, still writing depth so near-opaque meshes occlude
                 mTransparentDraws.Clear();
                 for (int i = 0; i < mModels.Count; i++)
                 {
                     GpuModel model = mModels[i];
-                    for (int j = 0; j < model.Transparent.Length; j++)
+                    for (int j = 0; j < model.Blend.Length; j++)
                     {
-                        if (model.Transparent[j])
-                            mTransparentDraws.Add(new TransparentDraw { Model = i, Mesh = j, DistSq = (model.Center[j] - mCamera.Position).LengthSquared });
+                        if (model.Blend[j] != MeshBlendMode.Opaque)
+                        {
+                            bool noWrite = model.Blend[j] == MeshBlendMode.Additive || model.Flat[j] || model.Color[j].A < 240;
+                            mTransparentDraws.Add(new TransparentDraw { Model = i, Mesh = j, NoWrite = noWrite, DistSq = (model.Center[j] - mCamera.Position).LengthSquared });
+                        }
                     }
                 }
 
                 mTransparentDraws.Sort((a, b) =>
                 {
-                    int c = b.DistSq.CompareTo(a.DistSq);
+                    int c = a.NoWrite.CompareTo(b.NoWrite);
+                    if (c != 0) return c;
+                    c = b.DistSq.CompareTo(a.DistSq);
                     if (c != 0) return c;
                     c = a.Model.CompareTo(b.Model);
                     return c != 0 ? c : a.Mesh.CompareTo(b.Mesh);
                 });
 
+                // pull blended meshes towards the camera so decals like shadows don't z fight with the floor
+                GL.Enable(EnableCap.Blend);
+                if (mUsePolyOffset) GL.Enable(EnableCap.PolygonOffsetFill);
+                GL.PolygonOffset(-1f, -1f);
                 foreach (var draw in mTransparentDraws)
-                    FullBind(mModels[draw.Model], draw.Mesh, draw.Mesh + 1, true);
+                {
+                    // additive doesn't write depth
+                    if (mModels[draw.Model].Blend[draw.Mesh] == MeshBlendMode.Additive)
+                    {
+                        GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.One);
+                        GL.DepthMask(false);
+                    }
+                    else
+                    {
+                        GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+                        GL.DepthMask(!draw.NoWrite);
+                    }
+
+                    if (mDebugView != 1) FullBind(mModels[draw.Model], draw.Mesh, draw.Mesh + 1, true);
+                }
+
+                GL.Disable(EnableCap.PolygonOffsetFill);
+                GL.DepthMask(true);
+                GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
             }
 
             mViewerCtrl.SwapBuffers();

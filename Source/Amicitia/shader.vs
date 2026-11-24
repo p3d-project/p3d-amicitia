@@ -19,7 +19,7 @@ uniform mat4 tran;
 void main()
 {
   od.pos = pos;
-  od.nrm = (proj * view * tran * vec4(nrm, 0.0) ).xyz;
+  od.nrm = (tran * vec4(nrm, 0.0)).xyz;
   od.tex = tex;
   od.col = col;
   gl_Position = proj * view * tran * vec4(pos, 1.0);
