@@ -14,13 +14,14 @@ jobs:
       - name: Check commit message for version tag
         id: version
         shell: bash
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          MSG="${{ github.event.head_commit.message }}"
-          if [[ "$MSG" =~ ^\[v([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\] ]]; then
-            echo "version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "should_release=true" >> $GITHUB_OUTPUT
+          if [[ "$COMMIT_MSG" =~ ^\[v([0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?)\] ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout
