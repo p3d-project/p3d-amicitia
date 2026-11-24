@@ -31,7 +31,9 @@ namespace Amicitia.ModelViewer
         public MeshBlendMode[] Blend;
         public Vector3[] Center;
         public bool[] Flat;
-        public GpuModel(int vbo, int[] ibo, int vc, int[] ic, string[] tid, Color[] color, bool strip, MeshBlendMode[] blend, Vector3[] center, bool[] flat)
+        public bool Collision;
+        public string[] UvAnim;
+        public GpuModel(int vbo, int[] ibo, int vc, int[] ic, string[] tid, Color[] color, bool strip, MeshBlendMode[] blend, Vector3[] center, bool[] flat, bool collision, string[] uvAnim)
         {
             this.Vbo = vbo;
             this.Ibo = ibo;
@@ -43,6 +45,8 @@ namespace Amicitia.ModelViewer
             this.Blend = blend;
             this.Center = center;
             this.Flat = flat;
+            this.Collision = collision;
+            this.UvAnim = uvAnim;
         }
     }
 
@@ -273,6 +277,17 @@ namespace Amicitia.ModelViewer
 
         private System.Diagnostics.Stopwatch mFrameTimer = System.Diagnostics.Stopwatch.StartNew();
 
+        // looping texture animations (water, spray, clouds), looked up by name from the materials
+        private Dictionary<string, UvAnimation> mUvAnims = new Dictionary<string, UvAnimation>();
+        private System.Diagnostics.Stopwatch mAnimClock = System.Diagnostics.Stopwatch.StartNew();
+        private double mAnimTime;
+
+        // temporary calibration for the uv animations while the real playback speed and direction are worked out:
+        // J flips the U scroll, K flips the V scroll, comma and period step the speed
+        private static readonly float[] UvSpeeds = { 0.25f, 0.5f, 1f, 2f, 4f, 8f, 15f, 30f, 60f };
+        private int mUvSpeedIndex = 2;
+        private bool mUvFlipU, mUvFlipV;
+
         // debug toggles for tracking down the white rings: B cycles blended meshes, O polygon offset, M mipmaps
         private int mDebugView = 0; // 0 all, 1 opaque only, 2 blended only
         private bool mUsePolyOffset = true;
@@ -281,7 +296,8 @@ namespace Amicitia.ModelViewer
         private void ShowDebugState()
         {
             string[] views = { "all", "opaque only", "blended only" };
-            string text = string.Format("[view: {0} | poly offset: {1} | mipmaps: {2}]", views[mDebugView], mUsePolyOffset ? "on" : "off", mUseMips ? "on" : "off");
+            string text = string.Format("[view: {0} | poly offset: {1} | mipmaps: {2} | uv speed: {3}x | uv flip U: {4} V: {5}]", views[mDebugView], mUsePolyOffset ? "on" : "off", mUseMips ? "on" : "off",
+                UvSpeeds[mUvSpeedIndex], mUvFlipU ? "on" : "off", mUvFlipV ? "on" : "off");
             Console.WriteLine(text);
             var form = mViewerCtrl.FindForm();
             if (form != null)
@@ -301,6 +317,20 @@ namespace Amicitia.ModelViewer
                     mUseMips ? (int)TextureMinFilter.LinearMipmapLinear : (int)TextureMinFilter.Linear);
             }
             mCurrentTextureId = 0;
+        }
+
+        // collision clumps (untextured geometry) loaded as part of a scene can be hidden
+        private bool mShowCollision = false;
+
+        public bool ShowCollision
+        {
+            get { return mShowCollision; }
+            set
+            {
+                mShowCollision = value;
+                if (mViewerCtrl != null)
+                    mViewerCtrl.Invalidate();
+            }
         }
 
         // clear color
@@ -387,6 +417,7 @@ namespace Amicitia.ModelViewer
                 mShaderProg.AddUniform( "diffuse" );
                 mShaderProg.AddUniform( "diffuseColor" );
                 mShaderProg.AddUniform( "isTextured" );
+                mShaderProg.AddUniform( "uvTran" );
                 mShaderProg.Bind();
             }
             catch ( Exception )
@@ -456,6 +487,10 @@ namespace Amicitia.ModelViewer
             if (args.KeyCode == Keys.B) { mDebugView = (mDebugView + 1) % 3; ShowDebugState(); }
             if (args.KeyCode == Keys.O && !args.Control) { mUsePolyOffset = !mUsePolyOffset; ShowDebugState(); }
             if (args.KeyCode == Keys.M) { mUseMips = !mUseMips; ApplyMipSetting(); ShowDebugState(); }
+            if (args.KeyCode == Keys.J) { mUvFlipU = !mUvFlipU; ShowDebugState(); }
+            if (args.KeyCode == Keys.K) { mUvFlipV = !mUvFlipV; ShowDebugState(); }
+            if (args.KeyCode == Keys.OemPeriod) { mUvSpeedIndex = Math.Min(mUvSpeedIndex + 1, UvSpeeds.Length - 1); ShowDebugState(); }
+            if (args.KeyCode == Keys.Oemcomma) { mUvSpeedIndex = Math.Max(mUvSpeedIndex - 1, 0); ShowDebugState(); }
         }
 
         private void TrackVertex(BasicVec3 p)
@@ -622,6 +657,43 @@ namespace Amicitia.ModelViewer
             }
         }
 
+        // name of the uv animation a material plays, or null if it is static
+        private static string GetMaterialUvAnimationName(RwMaterial material)
+        {
+            if (material.Extension == null)
+                return null;
+
+            foreach (var ext in material.Extension)
+            {
+                if (ext.Id == RwNodeId.RwUVAnimationPluginNode)
+                    return UvAnimation.ParseMaterialAnimationName(ext.RawData);
+            }
+
+            return null;
+        }
+
+        // reads the uv animations stored with a scene so the materials that reference them can play them
+        private void LoadUvAnimations(RmdScene rmdScene)
+        {
+            if (!mCanRender || rmdScene == null)
+                return;
+
+            foreach (var animationSet in rmdScene.Animations)
+            {
+                foreach (var node in animationSet)
+                {
+                    if (node.Id != RwNodeId.RwUVAnimationDictionaryNode)
+                        continue;
+
+                    foreach (var animation in UvAnimation.ParseDictionary(node.RawData))
+                    {
+                        if (!mUvAnims.ContainsKey(animation.Name))
+                            mUvAnims.Add(animation.Name, animation);
+                    }
+                }
+            }
+        }
+
         public static bool IsNaN(Vector3 value)
         {
             return float.IsNaN(value.X) || float.IsNaN(value.Y) || float.IsNaN(value.Z);
@@ -639,6 +711,10 @@ namespace Amicitia.ModelViewer
             int textureIdx = 0;
             foreach ( RwTextureNativeNode texture in textures.Textures )
             {
+                // already loaded (RMD files commonly share textures with the field's .rws)
+                if ( mTexLookup.ContainsKey( texture.Name ) )
+                    continue;
+
                 Console.WriteLine( "processing texture: {0}", textureIdx++ );
 
                 var colorpixels = texture.GetPixels();
@@ -694,10 +770,13 @@ namespace Amicitia.ModelViewer
             }
         }
 
-        public void LoadModel(RwClumpNode clump)
+        public void LoadModel(RwClumpNode clump, bool tagCollision = false)
         {
             if ( !mCanRender )
                 return;
+
+            // only tag collision when loading a whole scene, a clump picked directly in the tree is always shown
+            bool collision = tagCollision && clump.IsCollision;
 
             Console.WriteLine( "geometry count: {0}", clump.GeometryCount );
 
@@ -710,14 +789,20 @@ namespace Amicitia.ModelViewer
                 var geom = clump.GeometryList[atomic.GeometryIndex];
                 var frame = clump.FrameList[atomic.FrameIndex];
 
-                LoadGeometry(geom, frame.WorldTransform);
+                LoadGeometry(geom, frame.WorldTransform, collision);
             }
         }
 
-        public void LoadGeometry(RwGeometryNode geom, SN.Matrix4x4 transform)
+        public void LoadGeometry(RwGeometryNode geom, SN.Matrix4x4 transform, bool collision = false)
         {
             if ( !mCanRender )
                 return;
+
+            // fingerprint by size and world placement so a model already in the scene isn't loaded twice
+            string geometryKey = GetGeometryKey( geom, transform );
+            if ( mSkipDuplicateGeometry && mGeometryKeys.Contains( geometryKey ) )
+                return;
+            mGeometryKeys.Add( geometryKey );
 
             if (geom.MeshListNode == null)
             {
@@ -824,6 +909,14 @@ namespace Amicitia.ModelViewer
                     blend[i] = MeshBlendMode.Alpha;
             }
 
+            // the uv animation each mesh plays, if any
+            string[] uvAnim = new string[texname.Length];
+            for ( int i = 0; i < uvAnim.Length; i++ )
+            {
+                if ( geom.MaterialCount > 0 )
+                    uvAnim[i] = GetMaterialUvAnimationName( geom.Materials[geom.MeshListNode.MaterialMeshes[i].MaterialIndex] );
+            }
+
             // mesh centers, used to sort transparent meshes
             Vector3[] centers = new Vector3[allIndices.Length];
             bool[] flat = new bool[allIndices.Length];
@@ -855,7 +948,43 @@ namespace Amicitia.ModelViewer
 
             // add the render model to the list
             mModels.Add( new GpuModel( vbo, ibo, geom.VertexCount, allIndicesCount, texname, colors,
-                geom.MeshListNode.PrimitiveType == RwPrimitiveType.TriangleStrip, blend, centers, flat ) );
+                geom.MeshListNode.PrimitiveType == RwPrimitiveType.TriangleStrip, blend, centers, flat, collision, uvAnim ) );
+        }
+
+        private HashSet<string> mGeometryKeys = new HashSet<string>();
+        private bool mSkipDuplicateGeometry;
+
+        private static string GetGeometryKey(RwGeometryNode geom, SN.Matrix4x4 transform)
+        {
+            SN.Vector3 center = SN.Vector3.Transform( geom.BoundingSphere.Center, transform );
+
+            return string.Format( "{0}|{1}|{2}|{3}|{4}|{5}", geom.VertexCount, geom.TriangleCount,
+                ( long )Math.Round( center.X * 10f ), ( long )Math.Round( center.Y * 10f ), ( long )Math.Round( center.Z * 10f ),
+                ( long )Math.Round( geom.BoundingSphere.Radius * 10f ) );
+        }
+
+        /// <summary>
+        /// Adds another scene (eg. an RMD prop next to a field's .rws) to what is currently loaded, skipping any geometry
+        /// that is already there. Models are placed using their own frame transforms.
+        /// </summary>
+        public void LoadExtraScene(RmdScene rmdScene)
+        {
+            if ( !mCanRender )
+                return;
+
+            LoadTextures( rmdScene.TextureDictionary );
+            LoadUvAnimations( rmdScene );
+
+            mSkipDuplicateGeometry = true;
+            try
+            {
+                foreach ( var clump in rmdScene.Clumps )
+                    LoadModel( clump );
+            }
+            finally
+            {
+                mSkipDuplicateGeometry = false;
+            }
         }
 
         public void LoadScene(RmdScene rmdScene)
@@ -867,10 +996,11 @@ namespace Amicitia.ModelViewer
             Console.WriteLine("num textures: {0} ", rmdScene.TextureDictionary != null ? rmdScene.TextureDictionary.TextureCount : 0);
 
             LoadTextures(rmdScene.TextureDictionary);
+            LoadUvAnimations(rmdScene);
 
             foreach (var clump in rmdScene.Clumps)
             {
-                LoadModel( clump );
+                LoadModel( clump, true );
             }
         }
 
@@ -911,6 +1041,9 @@ namespace Amicitia.ModelViewer
             mTexLookup.Clear();
             mTransparentTextures.Clear();
             mVertexPositions.Clear();
+            mGeometryKeys.Clear();
+            mUvAnims.Clear();
+            mAnimClock.Restart();
         }
 
         public void DisposeViewer()
@@ -958,6 +1091,12 @@ namespace Amicitia.ModelViewer
                 // set shader vars
                 mShaderProg.SetUniform("diffuseColor", data.Color[i]);
                 mShaderProg.SetUniform("isTextured", isTextured);
+
+                // scroll the texture if the material has a uv animation, otherwise leave the coordinates alone
+                Matrix4 uvTransform = Matrix4.Identity;
+                if (data.UvAnim != null && !string.IsNullOrEmpty(data.UvAnim[i]) && mUvAnims.TryGetValue(data.UvAnim[i], out UvAnimation uvAnimation))
+                    uvTransform = uvAnimation.GetMatrix(mAnimTime * UvSpeeds[mUvSpeedIndex], mUvFlipU, mUvFlipV);
+                mShaderProg.SetUniform("uvTran", uvTransform);
 
                 // bind model
                 GL.BindBuffer(BufferTarget.ArrayBuffer, data.Vbo);
@@ -1020,6 +1159,7 @@ namespace Amicitia.ModelViewer
             mCamera.Bind( mShaderProg, mViewerCtrl );
             mTransform = Matrix4.CreateTranslation( mTp ) * Matrix4.CreateFromQuaternion( Quaternion.FromEulerAngles( 0, 0, 0 ) ) * Matrix4.CreateScale( new Vector3( 1.0f, 1.0f, 1.0f ) );
             mShaderProg.SetUniform( "tran", mTransform );
+            mAnimTime = mAnimClock.Elapsed.TotalSeconds;
 
             if (mModels.Count > 0)
             {
@@ -1027,12 +1167,14 @@ namespace Amicitia.ModelViewer
                 GL.Disable(EnableCap.Blend);
                 GL.DepthMask(true);
                 for (int i = 0; i < mModels.Count; i++)
-                    if (mDebugView != 2) FullBind(mModels[i], 0, mModels[i].Ibo.Length, false);
+                    if (mDebugView != 2 && (mShowCollision || !mModels[i].Collision)) FullBind(mModels[i], 0, mModels[i].Ibo.Length, false);
 
                 mTransparentDraws.Clear();
                 for (int i = 0; i < mModels.Count; i++)
                 {
                     GpuModel model = mModels[i];
+                    if (!mShowCollision && model.Collision)
+                        continue;
                     for (int j = 0; j < model.Blend.Length; j++)
                     {
                         if (model.Blend[j] != MeshBlendMode.Opaque)

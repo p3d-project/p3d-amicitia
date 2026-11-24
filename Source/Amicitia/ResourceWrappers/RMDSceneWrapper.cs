@@ -156,6 +156,12 @@ namespace Amicitia.ResourceWrappers
         /// </summary>
         public override bool ExportToFolder(string folderPath)
         {
+            return ExportToFolder(folderPath, true);
+        }
+
+        /// <param name="includeCollision">When false, clumps detected as collision (untextured geometry) are skipped.</param>
+        public bool ExportToFolder(string folderPath, bool includeCollision)
+        {
             if (ClumpsWrapper == null || ClumpsWrapper.Count == 0)
                 return false;
 
@@ -167,6 +173,9 @@ namespace Amicitia.ResourceWrappers
             for (var i = 0; i < ClumpsWrapper.Count; i++)
             {
                 var clumpWrapper = (RwClumpNodeWrapper)ClumpsWrapper.Nodes[i];
+
+                if (!includeCollision && clumpWrapper.Resource.IsCollision)
+                    continue;
 
                 var name = ClumpsWrapper.Count == 1 ? baseName : $"{baseName}_{clumpWrapper.Text.Replace(' ', '_')}";
                 var path = Path.Combine(folderPath, Path.ChangeExtension(name, "dae"));
@@ -397,6 +406,8 @@ namespace Amicitia.ResourceWrappers
         public int CameraCount   => Resource.CameraCount;
 
         public int GeometryCount => Resource.GeometryCount;
+
+        public bool IsCollision => Resource.IsCollision;
 
         public RwClumpNodeWrapper(string text, RwClumpNode resource) : base(text, resource)
         {

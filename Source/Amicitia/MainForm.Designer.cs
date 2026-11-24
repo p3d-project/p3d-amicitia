@@ -38,6 +38,8 @@
             this.saveAsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.optionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.backgroundColorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.showCollisionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.placeMissingModelsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainTreeView = new System.Windows.Forms.TreeView();
             this.mainPropertyGrid = new System.Windows.Forms.PropertyGrid();
             this.mainPictureBox = new System.Windows.Forms.PictureBox();
@@ -95,7 +97,9 @@
             // optionsToolStripMenuItem
             // 
             this.optionsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.backgroundColorToolStripMenuItem});
+            this.backgroundColorToolStripMenuItem,
+            this.showCollisionToolStripMenuItem,
+            this.placeMissingModelsToolStripMenuItem});
             this.optionsToolStripMenuItem.Name = "optionsToolStripMenuItem";
             this.optionsToolStripMenuItem.Size = new System.Drawing.Size(61, 20);
             this.optionsToolStripMenuItem.Text = "Options";
@@ -106,6 +110,23 @@
             this.backgroundColorToolStripMenuItem.Size = new System.Drawing.Size(210, 22);
             this.backgroundColorToolStripMenuItem.Text = "Background color...";
             this.backgroundColorToolStripMenuItem.Click += new System.EventHandler(this.BackgroundColorToolStripMenuItem_Click);
+            // 
+            // showCollisionToolStripMenuItem
+            // 
+            this.showCollisionToolStripMenuItem.CheckOnClick = true;
+            this.showCollisionToolStripMenuItem.Name = "showCollisionToolStripMenuItem";
+            this.showCollisionToolStripMenuItem.Size = new System.Drawing.Size(210, 22);
+            this.showCollisionToolStripMenuItem.Text = "Show collision meshes";
+            this.showCollisionToolStripMenuItem.CheckedChanged += new System.EventHandler(this.ShowCollisionToolStripMenuItem_CheckedChanged);
+            // 
+            // placeMissingModelsToolStripMenuItem
+            // 
+            this.placeMissingModelsToolStripMenuItem.CheckOnClick = true;
+            this.placeMissingModelsToolStripMenuItem.Name = "placeMissingModelsToolStripMenuItem";
+            this.placeMissingModelsToolStripMenuItem.Size = new System.Drawing.Size(210, 22);
+            this.placeMissingModelsToolStripMenuItem.Text = "Place missing RMD models";
+            this.placeMissingModelsToolStripMenuItem.ToolTipText = "When viewing a field .rws, also place the RMD models from the same file that the scene doesn't contain.";
+            this.placeMissingModelsToolStripMenuItem.CheckedChanged += new System.EventHandler(this.PlaceMissingModelsToolStripMenuItem_CheckedChanged);
             // 
             // exportAllToolStripMenuItem
             // 
@@ -204,6 +225,8 @@
         private OpenTK.GLControl glControl1;
         private System.Windows.Forms.ToolStripMenuItem optionsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem backgroundColorToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem showCollisionToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem placeMissingModelsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem saveAsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportAllToolStripMenuItem;
     }

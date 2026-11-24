@@ -15,12 +15,13 @@ out Data
 uniform mat4 proj;
 uniform mat4 view;
 uniform mat4 tran;
+uniform mat4 uvTran; // texture coordinate transform, identity unless the material has a uv animation
 
 void main()
 {
   od.pos = pos;
   od.nrm = (tran * vec4(nrm, 0.0)).xyz;
-  od.tex = tex;
+  od.tex = (uvTran * vec4(tex, 0.0, 1.0)).xy;
   od.col = col;
   gl_Position = proj * view * tran * vec4(pos, 1.0);
 }

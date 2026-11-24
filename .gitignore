@@ -237,3 +237,6 @@ _Pvt_Extensions
 
 # FAKE - F# Make
 .fake/
+
+# Game data used for reverse engineering file formats, never commit this
+_samples/

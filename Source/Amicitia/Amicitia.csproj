@@ -99,7 +99,9 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AppSettings.cs" />
     <Compile Include="ModelViewer\ModelViewer.cs" />
+    <Compile Include="ModelViewer\UvAnimation.cs" />
     <Compile Include="ModelViewer\ShaderProgram.cs" />
     <Compile Include="ResourceWrappers\ACXFileSystemWrapper.cs" />
     <Compile Include="ResourceWrappers\AMDFileWrapper.cs" />

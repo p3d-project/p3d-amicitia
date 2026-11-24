@@ -29,6 +29,7 @@ namespace AmicitiaLibrary.Graphics.RenderWare
         RwMatFxNode                       = 0x00000120,
         RwHAnimFrameExtensionNode       = 0x0000011E,
         RwUserDataPluginNode              = 0x0000011F,
+        RwUVAnimationPluginNode           = 0x00000135, // material plugin holding the name of the uv animation to play
         RwMaestro2DNode                   = 0x000001B1, // ???
         RmdAnimationPlaceholderNode  = 0xF0F00001,
         RmdAnimationInstanceNode     = 0xF0F00003,

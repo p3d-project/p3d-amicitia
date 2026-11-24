@@ -17,6 +17,8 @@
         private readonly byte[] mData;
         private uint mSize;
 
+        public byte[] RawData => mData;
+
         /// <summary>
         /// RenderWare version of nodes used by Persona 3, Persona 3 FES, and Persona 4.
         /// </summary>

@@ -93,6 +93,33 @@ namespace AmicitiaLibrary.Graphics.RenderWare
             get { return mExtensionNodeNode.Children; }
         }
 
+        /// <summary>
+        /// Gets if this clump looks like a collision clump. FES stores collisions as plain untextured
+        /// geometry so a clump with geometry where no material uses a texture is treated as collision.
+        /// This is a heuristic, the format has no explicit collision flag.
+        /// </summary>
+        public bool IsCollision
+        {
+            get
+            {
+                if (GeometryList.Count == 0)
+                    return false;
+
+                for (int g = 0; g < GeometryList.Count; g++)
+                {
+                    var geometry = GeometryList[g];
+
+                    for (int m = 0; m < geometry.MaterialCount; m++)
+                    {
+                        if (geometry.Materials[m].IsTextured)
+                            return false;
+                    }
+                }
+
+                return true;
+            }
+        }
+
         #endregion
 
         public static Assimp.Scene ToAssimpScene(RwClumpNode clumpNode)

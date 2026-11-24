@@ -23,6 +23,7 @@ namespace Amicitia
         private static MainForm mInstance;
         private ModelViewer.ModelViewer mViewer;
         private TreeNode mLastFramedNode;
+        private bool mLoadingSettings;
 
         public static MainForm Instance
         {
@@ -50,6 +51,7 @@ namespace Amicitia
         {
             InitializeComponent();
             InitializeMainForm();
+            LoadSavedOptions();
 #if DEBUG
             Type t = Type.GetType("Mono.Runtime");
             if (t != null)
@@ -150,6 +152,20 @@ namespace Amicitia
                             }
 
                             mViewer.LoadScene( resWrap.Resource as RmdScene );
+
+                            // optionally place the RMD models from the same file (doors, signs...) that the field scene doesn't contain
+                            if ( placeMissingModelsToolStripMenuItem.Checked && resNode.Parent != null &&
+                                 resNode.Text.EndsWith( "rws", StringComparison.OrdinalIgnoreCase ) )
+                            {
+                                foreach ( TreeNode sibling in resNode.Parent.Nodes )
+                                {
+                                    if ( sibling == resNode || !sibling.Text.EndsWith( "rmd", StringComparison.OrdinalIgnoreCase ) )
+                                        continue;
+
+                                    if ( sibling is IResourceWrapper siblingWrap && siblingWrap.Resource is RmdScene siblingScene )
+                                        mViewer.LoadExtraScene( siblingScene );
+                                }
+                            }
                         }
                         else if ( resWrap.FileType == SupportedFileType.RwClumpNode )
                         {
@@ -362,7 +378,7 @@ namespace Amicitia
             {
                 try
                 {
-                    if ( sceneWrapper.ExportToFolder( folderPath ) )
+                    if ( sceneWrapper.ExportToFolder( folderPath, showCollisionToolStripMenuItem.Checked ) )
                         exportedCount++;
                 }
                 catch ( Exception ex )
@@ -562,7 +578,27 @@ namespace Amicitia
             glControl1.Visible = false;
 
             if (ModelViewer.ModelViewer.IsSupported)
+            {
                 mViewer = new ModelViewer.ModelViewer(glControl1);
+
+                // apply the saved options now that the viewer exists
+                mViewer.ShowCollision = showCollisionToolStripMenuItem.Checked;
+
+                var savedBackground = AppSettings.GetColor(AppSettings.BackgroundColor);
+                if (savedBackground.HasValue)
+                    mViewer.BgColor = savedBackground.Value;
+            }
+        }
+
+        // restores the option checkboxes from the settings file, the handlers must not write them straight back
+        private void LoadSavedOptions()
+        {
+            mLoadingSettings = true;
+
+            showCollisionToolStripMenuItem.Checked = AppSettings.GetBool(AppSettings.ShowCollision, false);
+            placeMissingModelsToolStripMenuItem.Checked = AppSettings.GetBool(AppSettings.PlaceMissingModels, false);
+
+            mLoadingSettings = false;
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -580,8 +616,34 @@ namespace Amicitia
             using (ColorDialog dlg = new ColorDialog { Color = mViewer.BgColor })
             {
                 if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
                     mViewer.BgColor = dlg.Color;
+                    AppSettings.SetColor(AppSettings.BackgroundColor, dlg.Color);
+                }
             }
+        }
+
+        private void ShowCollisionToolStripMenuItem_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!mLoadingSettings)
+                AppSettings.SetBool(AppSettings.ShowCollision, showCollisionToolStripMenuItem.Checked);
+
+            if (mViewer == null)
+                return;
+
+            mViewer.ShowCollision = showCollisionToolStripMenuItem.Checked;
+        }
+
+        private void PlaceMissingModelsToolStripMenuItem_CheckedChanged(object sender, EventArgs e)
+        {
+            if (mLoadingSettings)
+                return;
+
+            AppSettings.SetBool(AppSettings.PlaceMissingModels, placeMissingModelsToolStripMenuItem.Checked);
+
+            // the scene has to be rebuilt to add or remove the extra models
+            if (mViewer != null && mainTreeView.SelectedNode != null)
+                UpdateReferences();
         }
     }
 
