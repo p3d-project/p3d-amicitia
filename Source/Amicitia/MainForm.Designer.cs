@@ -37,6 +37,7 @@
             this.saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.saveAsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.optionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.backgroundColorToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainTreeView = new System.Windows.Forms.TreeView();
             this.mainPropertyGrid = new System.Windows.Forms.PropertyGrid();
             this.mainPictureBox = new System.Windows.Forms.PictureBox();
@@ -93,11 +94,18 @@
             // 
             // optionsToolStripMenuItem
             // 
+            this.optionsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.backgroundColorToolStripMenuItem});
             this.optionsToolStripMenuItem.Name = "optionsToolStripMenuItem";
             this.optionsToolStripMenuItem.Size = new System.Drawing.Size(61, 20);
             this.optionsToolStripMenuItem.Text = "Options";
-            this.optionsToolStripMenuItem.Visible = false;
-            this.optionsToolStripMenuItem.Click += new System.EventHandler(this.OptionsToolStripMenuItem_Click);
+            // 
+            // backgroundColorToolStripMenuItem
+            // 
+            this.backgroundColorToolStripMenuItem.Name = "backgroundColorToolStripMenuItem";
+            this.backgroundColorToolStripMenuItem.Size = new System.Drawing.Size(210, 22);
+            this.backgroundColorToolStripMenuItem.Text = "Background color...";
+            this.backgroundColorToolStripMenuItem.Click += new System.EventHandler(this.BackgroundColorToolStripMenuItem_Click);
             // 
             // exportAllToolStripMenuItem
             // 
@@ -195,6 +203,7 @@
         private System.Windows.Forms.ToolTip toolTip1;
         private OpenTK.GLControl glControl1;
         private System.Windows.Forms.ToolStripMenuItem optionsToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem backgroundColorToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem saveAsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportAllToolStripMenuItem;
     }

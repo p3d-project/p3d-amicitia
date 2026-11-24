@@ -571,37 +571,17 @@ namespace Amicitia
                 mViewer.DisposeViewer();
         }
 
-        private void OptionsToolStripMenuItem_Click(object sender, EventArgs e)
+        private void BackgroundColorToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (mViewer == null)
                 return;
 
-            Form options = new Form();
-            Label colorlab = new Label();
-            Label more = new Label();
-            Button picker = new Button();
-            options.Text = "Options";
-            more.Text = "Stay tuned...";
-            more.Location = new Point(16, 80);
-            more.ForeColor = Color.Gray;
-            more.Font = new Font(more.Font, FontStyle.Italic);
-            picker.Text = "...";
-            picker.Location = new System.Drawing.Point(140, 16);
-            picker.Width /= 3;
-            picker.Click += (object s, EventArgs ev) =>
+            using (var centeringService = new DialogCenteringService(this))
+            using (ColorDialog dlg = new ColorDialog { Color = mViewer.BgColor })
             {
-                ColorDialog d = new ColorDialog {Color = mViewer.BgColor};
-                d.ShowDialog(options);
-                mViewer.BgColor = d.Color;
-            };
-            colorlab.Text = "Model viewer background color";
-            colorlab.Location = new Point(16, 20);
-            colorlab.Width = 200;
-            options.Size = new Size(512, 256);
-            options.Controls.Add(picker);
-            options.Controls.Add(colorlab);
-            options.Controls.Add(more);
-            options.ShowDialog(this);
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                    mViewer.BgColor = dlg.Color;
+            }
         }
     }
 

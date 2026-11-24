@@ -30,7 +30,12 @@ void main()
   // fixed world space light so shading doesn't change with the camera, meshes without normals stay fully lit
   float light = 1.0;
   if (length(id.nrm) > 0.001)
-    light = 0.5 + 0.5 * max(dot(normalize(id.nrm), normalize(vec3(0.3, 1.0, 0.4))), 0.0);
+  {
+    // flip the normal on back faces so they're lit as seen from behind (only reached with culling off)
+    vec3 n = normalize(id.nrm);
+    if (!gl_FrontFacing) n = -n;
+    light = 0.5 + 0.5 * max(dot(n, normalize(vec3(0.3, 1.0, 0.4))), 0.0);
+  }
 
   outColor = vec4(color.rgb * light, alpha);
   //outColor = vec4((color*diffuseColor*clamp(dot(-vec3(0, 0, 1), id.nrm), 0.0, 1.0)).rgb, color.a);

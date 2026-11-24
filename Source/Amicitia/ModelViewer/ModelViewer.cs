@@ -345,8 +345,8 @@ namespace Amicitia.ModelViewer
 
             GL.ClearColor(new Color4(128, 128, 128, 255));
             GL.FrontFace(FrontFaceDirection.Ccw);
-            GL.CullFace(CullFaceMode.Back);
-            GL.Enable(EnableCap.CullFace);
+            // no back face culling, single sided meshes (flowers, planes) stay visible from behind
+            GL.Disable(EnableCap.CullFace);
             GL.Enable(EnableCap.DepthTest);
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
